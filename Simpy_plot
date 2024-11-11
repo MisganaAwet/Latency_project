@@ -1,0 +1,82 @@
+import matplotlib.pyplot as plt
+import pandas as pd
+
+# Example results data; replace this with your actual results DataFrame
+data = {
+    'Latency (ms)': [4.143395,
+11.486135,
+24.790892,
+36.300602,
+50.276740,
+75.975361,
+108.228202,
+207.110057,
+508.286502,
+1002.145370],
+    'Response Time (ms)': [4.143395,
+11.486135,
+24.790892,
+36.300602,
+50.276740,
+75.975361,
+108.228202,
+207.110057,
+508.286502,
+1002.145370],
+    'Throughput (Mbps)': [95.137404, 
+                          101.399989, 71.444843, 
+                          90.204842, 144.438142, 
+                          55.626784, 53.145873, 0, 0, 0],
+    'Packet Loss (%)': [0.296298,
+0.246272,
+0.279596,
+3.264287,
+3.938494,
+5.471950,
+4.047933,
+8.403968,
+46.025978,
+62.778063]
+}
+
+results_df = pd.DataFrame(data)
+
+# Plot 1: Latency vs. Response Time
+plt.figure(figsize=(12, 8))
+plt.subplot(2, 2, 1)
+plt.plot(results_df['Latency (ms)'], results_df['Response Time (ms)'], marker='o', color='b')
+plt.title('Latency vs. Response Time')
+plt.xlabel('Latency (ms)')
+plt.ylabel('Response Time (ms)')
+plt.grid(True)
+
+# Plot 2: Latency vs. Throughput
+plt.subplot(2, 2, 2)
+plt.plot(results_df['Latency (ms)'], results_df['Throughput (Mbps)'], marker='o', color='g')
+plt.title('Latency vs. Throughput')
+plt.xlabel('Latency (ms)')
+plt.ylabel('Throughput (Mbps)')
+plt.grid(True)
+
+# Plot 3: Latency vs. Packet Loss
+plt.subplot(2, 2, 3)
+plt.plot(results_df['Latency (ms)'], results_df['Packet Loss (%)'], marker='o', color='r')
+plt.title('Latency vs. Packet Loss')
+plt.xlabel('Latency (ms)')
+plt.ylabel('Packet Loss (%)')
+plt.grid(True)
+
+# Plot 4: Combined Graph
+plt.subplot(2, 2, 4)
+plt.plot(results_df['Latency (ms)'], results_df['Response Time (ms)'], marker='o', label='Response Time (ms)', color='b')
+plt.plot(results_df['Latency (ms)'], results_df['Throughput (Mbps)'], marker='o', label='Throughput (Mbps)', color='g')
+plt.plot(results_df['Latency (ms)'], results_df['Packet Loss (%)'], marker='o', label='Packet Loss (%)', color='r')
+plt.title('Combined: Latency vs. Performance Metrics')
+plt.xlabel('Latency (ms)')
+plt.ylabel('Metrics')
+plt.legend()
+plt.grid(True)
+
+# Adjust layout and show plots
+plt.tight_layout()
+plt.show()
