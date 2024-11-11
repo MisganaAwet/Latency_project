@@ -1,0 +1,57 @@
+import simpy
+import random
+import pandas as pd
+
+# Definiera variabler
+SIM_TIME = 10000  # Total simulerad tid i ms
+LATENCY_LEVELS = [0, 10, 20, 30, 50, 75, 100, 200, 500, 1000]  # Latensnivåer i ms
+RESULTS = []
+
+def network_process(env, latency):
+    """Simulerar ett nätverksprocess med angiven latens och trängselvariabler."""
+    # Simulera paketets ankomst
+    arrival_time = env.now
+    
+    # Dynamisk latens (förbättring 3): Små variationer i latens
+    actual_latency = latency + random.uniform(0, 10)
+    yield env.timeout(actual_latency)  # Simulera latens med variationer
+
+    # Dynamisk paketförlust (förbättring 1)
+    packet_loss = min(100, random.uniform(0, actual_latency / 10))  # Stokastisk paketförlust
+
+    # Variation i genomströmning baserat på trängsel (förbättring 2)
+    network_load = random.uniform(0.5, 1.5)  # Simulerar nätverkets trängsel
+    throughput = max(0, (100 - (actual_latency / 2)) * (1 / network_load))
+
+    # Beräkna svarstid
+    response_time = env.now - arrival_time
+
+    # Logga resultaten
+    RESULTS.append({
+        'Latency (ms)': actual_latency,
+        'Response Time (ms)': response_time,
+        'Throughput (Mbps)': throughput,
+        'Packet Loss (%)': packet_loss
+    })
+
+def run_simulation(env):
+    """Kör simuleringen för olika latensnivåer."""
+    # Begränsad bandbredd och köhantering (förbättring 4)
+    network_capacity = simpy.Resource(env, capacity=3)  # Max 3 samtidiga processer
+
+    for latency in LATENCY_LEVELS:
+        with network_capacity.request() as req:
+            yield req  # Väntar tills det finns plats i nätverket
+            # Skapa ett nätverksprocess med specifik latens
+            yield env.process(network_process(env, latency))
+
+# Initiera SimPy-miljö
+env = simpy.Environment()
+env.process(run_simulation(env))
+
+# Kör simuleringen
+env.run(until=SIM_TIME)
+
+# Konvertera resultaten till DataFrame och skriv ut
+results_df = pd.DataFrame(RESULTS)
+print(results_df)
