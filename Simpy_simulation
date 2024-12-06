@@ -1,57 +1,100 @@
 import simpy
 import random
 import pandas as pd
+import math
 
-# Definiera variabler
-SIM_TIME = 10000  # Total simulerad tid i ms
-LATENCY_LEVELS = [0, 10, 20, 30, 50, 75, 100, 200, 500, 1000]  # Latensnivåer i ms
+# Simulation Parameters
+LATENCY_LEVELS = [0, 10, 20, 30, 50, 75, 100, 200, 500]  # Latency levels in ms
+END_DEVICES = 6  # Updated to 6 laptops
 RESULTS = []
 
-def network_process(env, latency):
-    """Simulerar ett nätverksprocess med angiven latens och trängselvariabler."""
-    # Simulera paketets ankomst
-    arrival_time = env.now
-    
-    # Dynamisk latens (förbättring 3): Små variationer i latens
-    actual_latency = latency + random.uniform(0, 10)
-    yield env.timeout(actual_latency)  # Simulera latens med variationer
+def calculate_throughput(latency, packet_loss):
+    """Realistic throughput formula considering latency and packet loss. At zero latency and packet loss, throughput should equal maximum bandwidth."""
+    bandwidth = 100  # Max bandwidth in Mbps
+    rtt_min = 10  # Minimum RTT in ms for the network
+    loss_rate = packet_loss / 100  # Convert packet loss to proportion
+    if latency == 0:
+        return bandwidth * (1 - loss_rate)
+    throughput = bandwidth * (1 - loss_rate) * (1 / (1 + (latency / rtt_min)))
+    return max(1, throughput)  # Ensure throughput doesn't fall below 1 Mbps
 
-    # Dynamisk paketförlust (förbättring 1)
-    packet_loss = min(100, random.uniform(0, actual_latency / 10))  # Stokastisk paketförlust
+def calculate_packet_loss(latency):
+    """Realistic packet loss. Packet loss grows non-linearly with latency to simulate real-world congestion effects."""
+    a = 20  # Scaling factor
+    b = 0.02  # Growth rate
+    base_loss = a * (1 - math.exp(-b * latency))
+    variability = random.uniform(-1, 1)  # Random noise between -1% and +1%
+    return max(0, base_loss + variability)  # Ensure no negative packet loss
 
-    # Variation i genomströmning baserat på trängsel (förbättring 2)
-    network_load = random.uniform(0.5, 1.5)  # Simulerar nätverkets trängsel
-    throughput = max(0, (100 - (actual_latency / 2)) * (1 / network_load))
+def calculate_response_time(latency, packet_loss):
+    """Realistic response time formula considering RTT, processing delay, queueing delay, and retransmissions."""
+    rtt = 2 * latency  # Round-trip time
+    processing_delay = 1  # Constant 1 ms processing delay
+    base_queueing_delay = 2  # Base queueing delay in ms
+    queueing_delay = base_queueing_delay * (1 + packet_loss / 100)
+    retransmission_delay = rtt * (packet_loss / 100)
+    return rtt + processing_delay + queueing_delay + retransmission_delay
 
-    # Beräkna svarstid
-    response_time = env.now - arrival_time
+def laptop_process(env, laptop_id, switch, latency, network_capacity):
+    """Simulates a laptop sending data through a switch to a router."""
+    with network_capacity.request() as req:
+        yield req  # Wait for access to the network resource
+        yield env.timeout(10)  # Simulate sending data every 10 ms
+        yield env.process(switch.forward(env, laptop_id, latency))
 
-    # Logga resultaten
-    RESULTS.append({
-        'Latency (ms)': actual_latency,
-        'Response Time (ms)': response_time,
-        'Throughput (Mbps)': throughput,
-        'Packet Loss (%)': packet_loss
-    })
+class Switch:
+    """Simulates a network switch that forwards packets to a router."""
+    def __init__(self, env, router):
+        self.env = env
+        self.router = router
+
+    def forward(self, env, laptop_id, latency):
+        switch_latency = latency / 2  # Switch contributes half the latency
+        yield env.timeout(switch_latency)
+        yield env.process(self.router.forward(env, laptop_id, latency))
+
+class Router:
+    """Simulates a router forwarding packets to the destination. Calculates throughput, packet loss, and response time."""
+    def __init__(self, env):
+        self.env = env
+
+    def forward(self, env, laptop_id, latency):
+        router_latency = latency / 2  # Router contributes half the latency
+        yield env.timeout(router_latency)
+        
+        # Calculate metrics
+        packet_loss = calculate_packet_loss(latency)
+        throughput = calculate_throughput(latency, packet_loss)
+        response_time = calculate_response_time(latency, packet_loss)
+        
+        # Log results
+        RESULTS.append({
+            'Latency (ms)': latency,
+            'Response Time (ms)': response_time,
+            'Throughput (Mbps)': throughput,
+            'Packet Loss (%)': packet_loss
+        })
 
 def run_simulation(env):
-    """Kör simuleringen för olika latensnivåer."""
-    # Begränsad bandbredd och köhantering (förbättring 4)
-    network_capacity = simpy.Resource(env, capacity=3)  # Max 3 samtidiga processer
-
+    """Simulates network traffic for multiple laptops at different latency levels."""
+    router = Router(env)
+    switch = Switch(env, router)
+    network_capacity = simpy.Resource(env, capacity=3)  # Limit to 3 simultaneous processes
+    
     for latency in LATENCY_LEVELS:
-        with network_capacity.request() as req:
-            yield req  # Väntar tills det finns plats i nätverket
-            # Skapa ett nätverksprocess med specifik latens
-            yield env.process(network_process(env, latency))
+        for laptop_id in range(END_DEVICES):
+            env.process(laptop_process(env, laptop_id, switch, latency, network_capacity))
+            yield env.timeout(1)  # Small delay between processes
 
-# Initiera SimPy-miljö
+# Initialize the simulation environment
 env = simpy.Environment()
 env.process(run_simulation(env))
+env.run()
 
-# Kör simuleringen
-env.run(until=SIM_TIME)
-
-# Konvertera resultaten till DataFrame och skriv ut
+# Convert results to a DataFrame and calculate averages per latency level
 results_df = pd.DataFrame(RESULTS)
-print(results_df)
+average_results_df = results_df.groupby(['Latency (ms)']).mean().reset_index()
+
+# Display the results
+print(average_results_df)
+
